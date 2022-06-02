@@ -3,7 +3,7 @@ import pandas as pd
 import PIL
 import os
 
-class CustomDataset(Dataset):
+class AudioDataset(Dataset):
     def __init__(self, classes_file, image_dir, transform=None):
         """
         Args:
