@@ -1,7 +1,7 @@
 # remotesensing
 Remote sensing work
 
-You can go to dataset/dataset_readme.md to get started.
+You can go to dataset/esc50_dataset.md to get connected with the esc-50 audio dataset.
 
 Methods review:
 1. Converting audio files to Spectrogram images: https://abizasobanaraj.medium.com/audio-spectrogram-generation-9d31ab695bcd
