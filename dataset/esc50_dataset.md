@@ -1,4 +1,8 @@
 ## ESC 50 dataset
+
+### Original dataset link
+* https://github.com/karolpiczak/ESC-50
+
 ### Azure Commercial
 * Subscription: MSCE_AI_TEAM_COMMERCIAL
 * Resource group: esc_50
