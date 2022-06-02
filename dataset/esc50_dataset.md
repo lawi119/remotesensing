@@ -3,8 +3,8 @@
 ### Original dataset link
 * https://github.com/karolpiczak/ESC-50
 
-### Azure Commercial
-* Subscription: MSCE_AI_TEAM_COMMERCIAL
+### Azure commercial location
+* Subscription: MSCE-AI-TEAM-COMMERCIAL
 * Resource group: esc_50
 * Storage account: ecs50data
 * Container: data
