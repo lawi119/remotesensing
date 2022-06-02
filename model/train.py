@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torchvision.transforms as T
 import numpy as np
-from custom_dataset import CustomDataset
+from audio_dataset import AudioDataset
 
 imagenet_stats = ([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
 train_tfms = T.Compose([
@@ -23,8 +23,8 @@ valid_tfms = T.Compose([
 ])
 
 #load datasets
-train_dataset = CustomDataset('/data/datasets/esc50/esc50_processed/meta/esc50.csv', '/data/datasets/esc50/esc50_processed/images/',transform=train_tfms)
-test_dataset = CustomDataset('/data/datasets/esc50/esc50_processed/meta/esc50.csv','/data/datasets/esc50/esc50_processed/images', transform=valid_tfms)
+train_dataset = AudioDataset('/data/datasets/esc50/esc50_processed/meta/esc50.csv', '/data/datasets/esc50/esc50_processed/images/',transform=train_tfms)
+test_dataset = AudioDataset('/data/datasets/esc50/esc50_processed/meta/esc50.csv','/data/datasets/esc50/esc50_processed/images', transform=valid_tfms)
 train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True)
 test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=True)
 
