@@ -23,8 +23,8 @@ valid_tfms = T.Compose([
 ])
 
 #load datasets
-train_dataset = CustomDataset('/data/datasets/esc50/esc50_processed/meta/esc50.csv', '/data/datasets/esc50/esc50_processed_2/images/',transform=train_tfms)
-test_dataset = CustomDataset('/data/datasets/esc50/esc50_processed/meta/esc50.csv','/data/datasets/esc50/esc50_processed_2/images', transform=valid_tfms)
+train_dataset = CustomDataset('/data/datasets/esc50/esc50_processed/meta/esc50.csv', '/data/datasets/esc50/esc50_processed/images/',transform=train_tfms)
+test_dataset = CustomDataset('/data/datasets/esc50/esc50_processed/meta/esc50.csv','/data/datasets/esc50/esc50_processed/images', transform=valid_tfms)
 train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True)
 test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=True)
 
