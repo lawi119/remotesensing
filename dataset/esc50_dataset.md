@@ -1,4 +1,5 @@
-## Connect to ESC 50 dataset in blobfuse
+## ESC 50 dataset
+### Azure Commercial
 * Subscription: MSCE_AI_TEAM_COMMERCIAL
 * Resource group: esc_50
 * Storage account: ecs50data
