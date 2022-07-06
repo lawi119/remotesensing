@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import librosa.display
 import argparse
+import os
 
 def create_spectrogram(wav_file, window, hop_length, time_steps, output_dir):
     y, sample_rate = librosa.load(wav_file, sr=22050)   #default value
@@ -19,9 +20,8 @@ def create_spectrogram(wav_file, window, hop_length, time_steps, output_dir):
 
     S = librosa.feature.melspectrogram(y=y, sr=sample_rate)
     librosa.display.specshow(librosa.power_to_db(S, ref=np.max))
-
-    image_file=os.path.join(output_dir, wav_file.split('/')[-1].split('.wav')[0]+'.png')
-    plt.savefig(image_file, dpi=400, bbox_inches='tight',pad_inches=0)
+    
+    plt.savefig(output_filename, dpi=400, bbox_inches='tight',pad_inches=0)
 
     plt.close()
     fig.clf()
@@ -31,10 +31,28 @@ def create_spectrogram(wav_file, window, hop_length, time_steps, output_dir):
 
     return
 
+def define_image_filepath(wav_file, df, output_dir):
+    image_filename = wav_file.split('/')[-1].split('.wav')[0]+'.png'
+    image_row = df[df['filename']==image_filename]
+    object_class = image_row.iloc[2]
+    subset = image.row.iloc[-1]
+    image_filepath = os.path.join(output_dir, subset, object_class, image_filename)
+
+    return image_filepath
+    
 def main(input_dir, window, hop_length, time_steps, output_dir):
+    
+    #preprocess meta file
+    df = pd.read_csv('/data/datasets/esc50/ESC-50-master/meta/esc50.csv')
+    df['filename'] = [x.split('/')[-1].split('.wav')[0]+'.png' for x in df['filename']]
+    df['subset'] = ['train' if x in [1,2,3,4] else 'val' for x in df['fold']]
+    
+    #process each wav file
     wav_files = [os.path.join(input_dir, x) for x in os.listdir(input_dir)]
     for wav_file in wav_files:
-        create_spectrogram(wav_file, window, hop_length, time_steps, output_dir)
+        output_filename = define_image_filepath(wav_file, df, output_dir)
+        create_spectrogram(wav_file, window, hop_length, time_steps, output_filename)
+        
     return
 
 if __name__ == '__main__':
