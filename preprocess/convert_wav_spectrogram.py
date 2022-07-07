@@ -34,16 +34,17 @@ def create_spectrogram(wav_file, window, hop_length, time_steps, output_dir):
 def define_image_filepath(wav_file, df, output_dir):
     image_filename = wav_file.split('/')[-1].split('.wav')[0]+'.png'
     image_row = df[df['filename']==image_filename]
-    object_class = image_row.iloc[2]
-    subset = image.row.iloc[-1]
+    object_class = image_row.iloc[0,3]
+    subset = image_row.iloc[0,-1]
+    os.makedirs(os.path.join(output_dir, subset, object_class), exist_ok=True)
     image_filepath = os.path.join(output_dir, subset, object_class, image_filename)
 
     return image_filepath
     
-def main(input_dir, window, hop_length, time_steps, output_dir):
+def main(input_dir, input_meta_file, window, hop_length, time_steps, output_dir):
     
     #preprocess meta file
-    df = pd.read_csv('/data/datasets/esc50/ESC-50-master/meta/esc50.csv')
+    df = pd.read_csv(input_meta_file)
     df['filename'] = [x.split('/')[-1].split('.wav')[0]+'.png' for x in df['filename']]
     df['subset'] = ['train' if x in [1,2,3,4] else 'val' for x in df['fold']]
     
@@ -59,8 +60,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--input_dir',
                         required=False,
-                        default='/data/datasets/esc50/ESC-50-master/audio/',
+                        default='/datadrive/datasets/esc50/ESC-50-master/audio/',
                         help='''Directory where .wav files live''')
+    parser.add_argument('--input_meta_file',
+                        required=False,
+                        default='/datadrive/datasets/esc50/ESC-50-master/meta/esc50.csv',
+                        help='''Path to meta .csv file''')
     parser.add_argument('--window',
                         default=True,
                         action="store_true",
@@ -75,11 +80,11 @@ if __name__ == '__main__':
                         help='''Number of time-steps, width of image''')
     parser.add_argument('--output_dir',
                         required=False,
-                        default='/data/datasets/esc50/esc50_processed/images/',
+                        default='/datadrive/datasets/esc50/esc50_processed2/images/',
                         help='''Directory where to save the .png files''')
 
     args = parser.parse_args()
 
-    main(input_dir=args.input_dir, window=args.window,
+    main(input_dir=args.input_dir, input_meta_file=args.input_meta_file, window=args.window,
          hop_length=args.hop_length,time_steps=args.time_steps,
          output_dir=args.output_dir)
