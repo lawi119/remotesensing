@@ -20,7 +20,7 @@ import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision.models as models
 from torch.utils.data import Subset
-
+import yaml
 
 #grab possible model names
 model_names = sorted(name for name in models.__dict__
@@ -65,12 +65,11 @@ parser.add_argument('--seed', default=0, type=int,
                     help='seed for initializing training. ')
 parser.add_argument('--gpu', default=None, type=int,
                     help='GPU id to use.')
-parser.add_argument('--multiprocessing-distributed', action='store_true',
-                    help='Use multi-processing distributed training to launch '
-                         'N processes per node, which has N GPUs. This is the '
-                         'fastest way to use PyTorch for either single node or '
-                         'multi node data parallel training')				
-					
+parser.add_argument('--output-dir', default='model_runs', type=str,
+                    help='Output folder to write trained model weights to.')
+parser.add_argument('--checkpoint-interval',default=1, type=int,
+                    help='Epoch interval to write checkpoints out on')
+
 best_acc1 = 0
 
 
@@ -94,22 +93,13 @@ def main():
     #HARDCODE WORLD_SIZE TO RESTRICT TRAINING TO SINGLE NODE
     world_size = 1
     #HARDCODE RANK TO USE THE GPU NODE WITH 2 CARDS
-    args.rank = 2
+    args.rank = 1
     #HARDCODE ARGS.DISTRIBUTED
     args.distributed = False
-
+    args.multiprocessing_distributed = False
 
     ngpus_per_node = torch.cuda.device_count()
-    if args.multiprocessing_distributed:
-		# Since we have ngpus_per_node processes per node, the total world_size
-        # needs to be adjusted accordingly
-        args.world_size = ngpus_per_node * world_size
-		# Use torch.multiprocessing.spawn to launch distributed processes: the
-        # main_worker process function
-        mp.spawn(main_worker, nprocs=ngpus_per_node, args=(ngpus_per_node, args))
-    else:
-	# Simply call main_worker function
-        main_worker(args.gpu, ngpus_per_node, args)
+    main_worker(args.gpu, ngpus_per_node, args)
 	
 	
 	
@@ -224,6 +214,21 @@ def main_worker(gpu, ngpus_per_node, args):
         validate(val_loader, model, criterion, args)
         return
 
+    # create output folder
+    params = [args.arch,'epoch_'+str(args.epochs),'batchsize_'+str(args.batch_size), 'lr_'+str(args.lr), 'momentum_'+str(args.momentum), 'weightdecay_'+str(args.weight_decay)]
+    output_folder = os.path.join(args.output_dir, "--".join(params))
+    os.makedirs(output_folder)
+
+    #write out config
+    args_dict = vars(args)
+    dict_file = []
+    for arg in list(vars(args).keys()):
+        dict_file += [{arg:args_dict[arg]}]
+        
+    with open(os.path.join(output_folder, 'config.yaml'),'w') as file:
+        yaml.dump(dict_file, file)
+    
+
     for epoch in range(args.start_epoch, args.epochs):
 
         # train for one epoch
@@ -246,7 +251,11 @@ def main_worker(gpu, ngpus_per_node, args):
                 'optimizer' : optimizer.state_dict(),
                 'scheduler' : scheduler.state_dict()
             }, is_best)
-			
+        
+        
+        if epoch%args.checkpoint_interval == 0:
+            torch.save(model.state_dict(), os.path.join(output_folder, 'epoch_'+str(epoch)+'.pt'))
+    			
 		
 def train(train_loader, model, criterion, optimizer, epoch, args):
     batch_time = AverageMeter('Time', ':6.3f')
@@ -312,9 +321,10 @@ def validate(val_loader, model, criterion, args):
                 loss = criterion(output, target)
 
                 # measure accuracy and record loss
-                acc1 = accuracy(output, target, topk=(1))
+                acc1, acc5 = accuracy(output, target, topk=(1, 5))
                 losses.update(loss.item(), images.size(0))
                 top1.update(acc1[0], images.size(0))
+                top5.update(acc5[0], images.size(0))
 
                 # measure elapsed time
                 batch_time.update(time.time() - end)
@@ -326,9 +336,10 @@ def validate(val_loader, model, criterion, args):
     batch_time = AverageMeter('Time', ':6.3f', Summary.NONE)
     losses = AverageMeter('Loss', ':.4e', Summary.NONE)
     top1 = AverageMeter('Acc@1', ':6.2f', Summary.AVERAGE)
+    top5 = AverageMeter('Acc@5', ':6.2f', Summary.AVERAGE)
     progress = ProgressMeter(
         len(val_loader) + (args.distributed and (len(val_loader.sampler) * args.world_size < len(val_loader.dataset))),
-        [batch_time, losses, top1],
+        [batch_time, losses, top1, top5],
         prefix='Test: ')
 
     # switch to evaluate mode
