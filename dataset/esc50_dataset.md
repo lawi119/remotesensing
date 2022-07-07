@@ -14,4 +14,4 @@
 * ESC-50-master/meta/esc50.csv: labels for 2000 .wav files
 
 ### Processed data for model
-* esc50_processed/images: 2000 .png files created using preprocess/convert_wav_to_spectogram.py
+* esc50_processed2/images: 2000 .png files created using preprocess/convert_wav_to_spectogram.py
