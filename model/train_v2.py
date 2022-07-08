@@ -223,9 +223,9 @@ def main_worker(gpu, ngpus_per_node, args):
     for epoch in range(args.start_epoch, args.epochs):
 
         # train for one epoch
-        train(train_loader, model, criterion, optimizer, epoch, args)
+        train(train_loader, model, criterion, optimizer, epoch, args, output_folder)
         # evaluate on validation set
-        acc1 = validate(val_loader, model, criterion, args)
+        acc1 = validate(val_loader, model, criterion, args, output_folder)
         scheduler.step()
 
         # remember best acc@1 and save checkpoint
@@ -245,7 +245,7 @@ def main_worker(gpu, ngpus_per_node, args):
             os.path.join(output_folder, 'epoch_'+str(epoch)+'.pth.tar'))
         
 		
-def train(train_loader, model, criterion, optimizer, epoch, args):
+def train(train_loader, model, criterion, optimizer, epoch, args, output_folder):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
@@ -289,10 +289,13 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         end = time.time()
 
         if i % args.print_freq == 0:
-            progress.display(i + 1)
+            print(progress.display(i + 1))
+            with open(os.path.join(output_folder, 'log.txt'), 'a') as f:
+                f.write(progress.display(i + 1)+"\n")
+                f.close()
 
 
-def validate(val_loader, model, criterion, args):
+def validate(val_loader, model, criterion, args, output_folder):
 
     def run_validate(loader, base_progress=0):
         with torch.no_grad():
@@ -319,8 +322,11 @@ def validate(val_loader, model, criterion, args):
                 end = time.time()
 
                 if i % args.print_freq == 0:
-                    progress.display(i + 1)
-
+                    print(progress.display(i + 1))
+                    with open(os.path.join(output_folder, 'log.txt'), 'a') as f:
+                        f.write(progress.display(i + 1)+"\n")
+                        f.close()
+                
     batch_time = AverageMeter('Time', ':6.3f', Summary.NONE)
     losses = AverageMeter('Loss', ':.4e', Summary.NONE)
     top1 = AverageMeter('Acc@1', ':6.2f', Summary.AVERAGE)
@@ -329,11 +335,16 @@ def validate(val_loader, model, criterion, args):
         len(val_loader),
         [batch_time, losses, top1, top2],
         prefix='Test: ')
-
+    
     # switch to evaluate mode
     model.eval()
     run_validate(val_loader)
-    progress.display_summary()
+    print(progress.display_summary())
+
+    with open(os.path.join(output_folder, 'log.txt'), 'a') as f:
+        f.write(progress.display_summary()+"\n")
+        f.close()
+
 
     return top1.avg
 
@@ -406,12 +417,12 @@ class ProgressMeter(object):
     def display(self, batch):
         entries = [self.prefix + self.batch_fmtstr.format(batch)]
         entries += [str(meter) for meter in self.meters]
-        print('\t'.join(entries))
+        return '\t'.join(entries)
         
     def display_summary(self):
         entries = [" *"]
         entries += [meter.summary() for meter in self.meters]
-        print(' '.join(entries))
+        return ' '.join(entries)
 
     def _get_batch_fmtstr(self, num_batches):
         num_digits = len(str(num_batches // 1))
