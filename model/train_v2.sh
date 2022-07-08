@@ -1,1 +1,1 @@
-python train_v2.py '/datadrive/datasets/esc50/esc50_processed2/images/' --epochs 2 --pretrained --output-dir /datadrive/remotesensing/model/model_runs/ --workers 4
+python train_v2.py -t '/datadrive/datasets/esc50/esc50_processed2/images/train' -v '/datadrive/datasets/esc50/esc50_processed2/images/val' --epochs 2 --pretrained --output-dir /datadrive/remotesensing/model/model_runs/ --workers 4

@@ -28,8 +28,10 @@ model_names = sorted(name for name in models.__dict__
     and callable(models.__dict__[name]))
 
 parser = argparse.ArgumentParser(description='PyTorch Training')
-parser.add_argument('data', metavar='DIR', default='imagenet',
-                    help='path to dataset (default: imagenet)')		
+parser.add_argument('-t', '--train-data', metavar='T', default='imagenet',
+                    help='path to train dataset (default: imagenet)')
+parser.add_argument('-v', '--val-data', metavar='V', default='imagenet',
+                    help='path to val dataset (default: imagenet)')
 parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
                     choices=model_names,
                     help='model architecture: ' +
@@ -41,7 +43,7 @@ parser.add_argument('--epochs', default=10, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
-parser.add_argument('-b', '--batch-size', default=256, type=int,
+parser.add_argument('-b', '--batch-size', default=100, type=int,
                     metavar='N',
                     help='mini-batch size (default: 256), this is the total '
                          'batch size of all GPUs on the current node when '
@@ -89,14 +91,6 @@ def main():
     if args.gpu is not None:
         warnings.warn('You have chosen a specific GPU. This will completely '
                       'disable data parallelism.')
-	
-    #HARDCODE WORLD_SIZE TO RESTRICT TRAINING TO SINGLE NODE
-    world_size = 1
-    #HARDCODE RANK TO USE THE GPU NODE WITH 2 CARDS
-    args.rank = 1
-    #HARDCODE ARGS.DISTRIBUTED
-    args.distributed = False
-    args.multiprocessing_distributed = False
 
     ngpus_per_node = torch.cuda.device_count()
     main_worker(args.gpu, ngpus_per_node, args)
@@ -118,12 +112,9 @@ def main_worker(gpu, ngpus_per_node, args):
         print("=> creating model '{}'".format(args.arch))
         model = models.__dict__[args.arch]()
 
-    # ALTER MODEL
-    # CALCULATE NUM_CLASSES
-    #num_classes = len(train_dataset.classes)
-    num_classes = 50
-
-    # REDEFINE THE LAST LAYER
+    # redefine last layer
+    train_dir = args.train_data
+    num_classes = len(next(os.walk(train_dir))[1])
     num_ftrs = model.fc.in_features
     model.fc = nn.Linear(num_ftrs, num_classes)
 
@@ -149,7 +140,7 @@ def main_worker(gpu, ngpus_per_node, args):
     """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
     scheduler = StepLR(optimizer, step_size=30, gamma=0.1)
 	
-	# optionally resume from a checkpoint
+    # optionally resume from a checkpoint
     if args.resume:
         if os.path.isfile(args.resume):
             print("=> loading checkpoint '{}'".format(args.resume))
@@ -175,8 +166,8 @@ def main_worker(gpu, ngpus_per_node, args):
     cudnn.benchmark = True
 	
     # Data loading code
-    traindir = os.path.join(args.data, 'train')
-    valdir = os.path.join(args.data, 'val')
+    traindir = args.train_data
+    valdir = args.val_data
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
 						std =[0.229, 0.224, 0.225])
 		
@@ -188,7 +179,7 @@ def main_worker(gpu, ngpus_per_node, args):
             transforms.ToTensor(),
             normalize,
         ]))
-		
+ 		
     val_dataset = datasets.ImageFolder(
     valdir,
     transforms.Compose([
@@ -241,8 +232,7 @@ def main_worker(gpu, ngpus_per_node, args):
         is_best = acc1 > best_acc1
         best_acc1 = max(acc1, best_acc1)
 
-        if not args.multiprocessing_distributed or (args.multiprocessing_distributed
-                and args.rank % ngpus_per_node == 0):
+        if epoch%args.checkpoint_interval == 0:
             save_checkpoint({
                 'epoch': epoch + 1,
                 'arch': args.arch,
@@ -250,22 +240,20 @@ def main_worker(gpu, ngpus_per_node, args):
                 'best_acc1': best_acc1,
                 'optimizer' : optimizer.state_dict(),
                 'scheduler' : scheduler.state_dict()
-            }, is_best)
+            },
+            is_best, 
+            os.path.join(output_folder, 'epoch_'+str(epoch)+'.pth.tar'))
         
-        
-        if epoch%args.checkpoint_interval == 0:
-            torch.save(model.state_dict(), os.path.join(output_folder, 'epoch_'+str(epoch)+'.pt'))
-    			
 		
 def train(train_loader, model, criterion, optimizer, epoch, args):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
     top1 = AverageMeter('Acc@1', ':6.2f')
-    top5 = AverageMeter('Acc@5', ':6.2f')
+    top2 = AverageMeter('Acc@2', ':6.2f')
     progress = ProgressMeter(
         len(train_loader),
-        [batch_time, data_time, losses, top1, top5],
+        [batch_time, data_time, losses, top1, top2],
         prefix="Epoch: [{}]".format(epoch))
 
     # switch to train mode
@@ -286,10 +274,10 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         loss = criterion(output, target)
 
         # measure accuracy and record loss
-        acc1, acc5 = accuracy(output, target, topk=(1, 5))
+        acc1, acc2 = accuracy(output, target, topk=(1, 2))
         losses.update(loss.item(), images.size(0))
         top1.update(acc1[0], images.size(0))
-        top5.update(acc5[0], images.size(0))
+        top2.update(acc2[0], images.size(0))
 
         # compute gradient and do SGD step
         optimizer.zero_grad()
@@ -321,10 +309,10 @@ def validate(val_loader, model, criterion, args):
                 loss = criterion(output, target)
 
                 # measure accuracy and record loss
-                acc1, acc5 = accuracy(output, target, topk=(1, 5))
+                acc1, acc2 = accuracy(output, target, topk=(1, 2))
                 losses.update(loss.item(), images.size(0))
                 top1.update(acc1[0], images.size(0))
-                top5.update(acc5[0], images.size(0))
+                top2.update(acc2[0], images.size(0))
 
                 # measure elapsed time
                 batch_time.update(time.time() - end)
@@ -336,10 +324,10 @@ def validate(val_loader, model, criterion, args):
     batch_time = AverageMeter('Time', ':6.3f', Summary.NONE)
     losses = AverageMeter('Loss', ':.4e', Summary.NONE)
     top1 = AverageMeter('Acc@1', ':6.2f', Summary.AVERAGE)
-    top5 = AverageMeter('Acc@5', ':6.2f', Summary.AVERAGE)
+    top2 = AverageMeter('Acc@2', ':6.2f', Summary.AVERAGE)
     progress = ProgressMeter(
-        len(val_loader) + (args.distributed and (len(val_loader.sampler) * args.world_size < len(val_loader.dataset))),
-        [batch_time, losses, top1, top5],
+        len(val_loader),
+        [batch_time, losses, top1, top2],
         prefix='Test: ')
 
     # switch to evaluate mode
@@ -350,10 +338,12 @@ def validate(val_loader, model, criterion, args):
     return top1.avg
 
 
-def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
+def save_checkpoint(state, is_best, filename):
     torch.save(state, filename)
     if is_best:
-        shutil.copyfile(filename, 'model_best.pth.tar')
+        new_folder = os.path.join('/'.join(filename.split('/')[0:-1]), 'model_best')
+        os.makedirs(new_folder, exist_ok=True)
+        shutil.copyfile(filename, os.path.join(new_folder, filename.split('/')[-1]))
 
 class Summary(Enum):
     NONE = 0
