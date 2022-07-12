@@ -21,6 +21,7 @@ import torchvision.datasets as datasets
 import torchvision.models as models
 from torch.utils.data import Subset
 import yaml
+import numpy as np
 
 #grab possible model names
 model_names = sorted(name for name in models.__dict__
@@ -37,7 +38,7 @@ parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
                     help='model architecture: ' +
                         ' | '.join(model_names) +
                         ' (default: resnet18)')
-parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
+parser.add_argument('-j', '--workers', default=1, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
 parser.add_argument('--epochs', default=10, type=int, metavar='N',
                     help='number of total epochs to run')
@@ -201,14 +202,18 @@ def main_worker(gpu, ngpus_per_node, args):
         val_dataset, batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=True, sampler=val_sampler)
 
-    if args.evaluate:
-        validate(val_loader, model, criterion, args)
-        return
-
+    
     # create output folder
     params = [args.arch,'epoch_'+str(args.epochs),'batchsize_'+str(args.batch_size), 'lr_'+str(args.lr), 'momentum_'+str(args.momentum), 'weightdecay_'+str(args.weight_decay)]
     output_folder = os.path.join(args.output_dir, "--".join(params))
     os.makedirs(output_folder)
+    
+    # get class labels
+    list_class_names = val_dataset.classes
+
+    if args.evaluate:
+        validate(val_loader, model, criterion, args, output_folder, list_class_names)
+        return
 
     #write out config
     args_dict = vars(args)
@@ -225,7 +230,7 @@ def main_worker(gpu, ngpus_per_node, args):
         # train for one epoch
         train(train_loader, model, criterion, optimizer, epoch, args, output_folder)
         # evaluate on validation set
-        acc1 = validate(val_loader, model, criterion, args, output_folder)
+        acc1 = validate(val_loader, model, criterion, args, output_folder, list_class_names)
         scheduler.step()
 
         # remember best acc@1 and save checkpoint
@@ -250,10 +255,9 @@ def train(train_loader, model, criterion, optimizer, epoch, args, output_folder)
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
     top1 = AverageMeter('Acc@1', ':6.2f')
-    top2 = AverageMeter('Acc@2', ':6.2f')
     progress = ProgressMeter(
         len(train_loader),
-        [batch_time, data_time, losses, top1, top2],
+        [batch_time, data_time, losses, top1],
         prefix="Epoch: [{}]".format(epoch))
 
     # switch to train mode
@@ -274,10 +278,9 @@ def train(train_loader, model, criterion, optimizer, epoch, args, output_folder)
         loss = criterion(output, target)
 
         # measure accuracy and record loss
-        acc1, acc2 = accuracy(output, target, topk=(1, 2))
+        acc1, _ = accuracy(output, target, topk=(1,1))
         losses.update(loss.item(), images.size(0))
         top1.update(acc1[0], images.size(0))
-        top2.update(acc2[0], images.size(0))
 
         # compute gradient and do SGD step
         optimizer.zero_grad()
@@ -295,7 +298,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args, output_folder)
                 f.close()
 
 
-def validate(val_loader, model, criterion, args, output_folder):
+def validate(val_loader, model, criterion, args, output_folder, list_class_names):
 
     def run_validate(loader, base_progress=0):
         with torch.no_grad():
@@ -310,13 +313,40 @@ def validate(val_loader, model, criterion, args, output_folder):
                 # compute output
                 output = model(images)
                 loss = criterion(output, target)
-
+                
                 # measure accuracy and record loss
-                acc1, acc2 = accuracy(output, target, topk=(1, 2))
+                acc1, _ = accuracy(output, target, topk=(1,1))
                 losses.update(loss.item(), images.size(0))
                 top1.update(acc1[0], images.size(0))
-                top2.update(acc2[0], images.size(0))
+                
+                # measure per class accuracy
+                names = list(set(list_class_names))
+                p = [0 for c in names]
+                r = [0 for c in names]
+                f = [0 for c in names]
+                a = [0 for c in names]
 
+                _, preds = torch.max(output.data, 1)
+
+                for c in range(0, len(p)):
+                    tp = torch.count_nonzero(((preds == c) * (target == c))).item()
+                    fp = torch.count_nonzero(((preds == c) * (target != c))).item()
+                    fn = torch.count_nonzero(((preds != c) * (target == c))).item()
+                    tn = torch.count_nonzero(((preds != c) * (target != c))).item()
+                    if tp+fp==0:
+                        p[c] = 0
+                    else:
+                        p[c] = tp/(tp+fp)
+                    if tp+fn==0:
+                        r[c] = 0
+                    else:
+                        r[c] = tp/(tp+fn)
+                    if (tp+1/2*(fp+fn))==0:
+                        f[c] = 0
+                    else:
+                        f[c] = tp/(tp+(1/2)*(fp+fn))
+                    a[c] = (tp+tn)/(tp+fn+tn+fp)
+                metrics.update(np.array(p), np.array(r), np.array(f), np.array(a))
                 # measure elapsed time
                 batch_time.update(time.time() - end)
                 end = time.time()
@@ -330,10 +360,12 @@ def validate(val_loader, model, criterion, args, output_folder):
     batch_time = AverageMeter('Time', ':6.3f', Summary.NONE)
     losses = AverageMeter('Loss', ':.4e', Summary.NONE)
     top1 = AverageMeter('Acc@1', ':6.2f', Summary.AVERAGE)
-    top2 = AverageMeter('Acc@2', ':6.2f', Summary.AVERAGE)
+    metrics = MetricsMeter(list_class_names)
+
+    progress_params = [batch_time, losses, top1, metrics]
     progress = ProgressMeter(
         len(val_loader),
-        [batch_time, losses, top1, top2],
+        progress_params,
         prefix='Test: ')
     
     # switch to evaluate mode
@@ -361,6 +393,54 @@ class Summary(Enum):
     AVERAGE = 1
     SUM = 2
     COUNT = 3
+
+class MetricsMeter(object):
+    """Computes and stores the average per-class values for precision, recall, f1 score, and accuracy"""
+    def __init__(self, list_class_names):
+        self.reset()
+        self.list_class_names = list_class_names
+
+    def reset(self):
+        self.p = 0
+        self.r = 0
+        self.f = 0
+        self.a = 0
+        self.psum = 0
+        self.rsum = 0
+        self.fsum = 0
+        self.asum = 0
+        self.count = 0
+        self.pavg = 0
+        self.ravg = 0
+        self.favg = 0
+        self.aavg = 0
+
+    def update(self, p, r, f, a, n=1.0):
+        self.p = p
+        self.r = r
+        self.f = f
+        self.a = a
+        self.psum += p*n
+        self.rsum += r*n
+        self.fsum += f*n
+        self.asum += a*n
+        self.count += n
+        self.pavg = self.psum / self.count
+        self.ravg = self.rsum / self.count
+        self.favg = self.fsum / self.count
+        self.aavg = self.asum / self.count
+
+    def __str__(self):
+        fmt_str = ''
+        for i in range(0, len(self.list_class_names)):
+            fmt_str += "\n"+self.list_class_names[i]+' P: '+str(np.round(self.p[i], 2))+' R: '+str(np.round(self.r[i], 2))+' F1: '+str(np.round(self.f[i], 2))+' Acc: '+str(np.round(self.a[i], 2))+'  '
+        return fmt_str
+
+    def summary(self):
+        fmt_str = ''
+        for i in range(0, len(self.list_class_names)):
+            fmt_str += "\n"+self.list_class_names[i]+' P avg: '+str(np.round(self.pavg[i], 2))+' R avg: '+str(np.round(self.ravg[i], 2))+' F1 avg: '+str(np.round(self.favg[i], 2))+' Acc avg: '+str(np.round(self.aavg[i], 2))+'  '
+        return fmt_str
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""
