@@ -5,8 +5,10 @@ import librosa.display
 import argparse
 import os
 
-def create_spectrogram(wav_file, window, hop_length, time_steps, output_dir):
+def create_spectrogram(wav_file, window, hop_length, time_steps, output_dir, noise):
     y, sample_rate = librosa.load(wav_file, sr=22050)   #default value
+    if noise:
+        y = np.random.normal(size=y.shape[0])
     fig = plt.figure(figsize=[0.72,0.72])
     ax = fig.add_subplot(111)
     ax.axes.get_xaxis().set_visible(False)
@@ -41,7 +43,7 @@ def define_image_filepath(wav_file, df, output_dir):
 
     return image_filepath
     
-def main(input_dir, input_meta_file, window, hop_length, time_steps, output_dir):
+def main(input_dir, input_meta_file, window, hop_length, time_steps, output_dir, noise):
     
     #preprocess meta file
     df = pd.read_csv(input_meta_file)
@@ -80,11 +82,15 @@ if __name__ == '__main__':
                         help='''Number of time-steps, width of image''')
     parser.add_argument('--output_dir',
                         required=False,
-                        default='/datadrive/datasets/esc50/esc50_processed2/images/',
+                        default='/datadrive/datasets/esc50/esc50_processed2_noisy/images/',
                         help='''Directory where to save the .png files''')
-
+    parser.add_argument('--noise',
+                        default=False,
+                        action="store_true",
+                        help='''True/false to create a noisy version of the data''')
+                        
     args = parser.parse_args()
 
     main(input_dir=args.input_dir, input_meta_file=args.input_meta_file, window=args.window,
          hop_length=args.hop_length,time_steps=args.time_steps,
-         output_dir=args.output_dir)
+         output_dir=args.output_dir, noise = args.noise)
