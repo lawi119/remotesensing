@@ -212,7 +212,7 @@ def main_worker(gpu, ngpus_per_node, args):
     list_class_names = val_dataset.classes
 
     if args.evaluate:
-        validate(val_loader, model, criterion, args, output_folder, list_class_names)
+        validate(val_loader, model, criterion, args, output_folder, list_class_names, True)
         return
 
     #write out config
@@ -230,7 +230,7 @@ def main_worker(gpu, ngpus_per_node, args):
         # train for one epoch
         train(train_loader, model, criterion, optimizer, epoch, args, output_folder)
         # evaluate on validation set
-        acc1 = validate(val_loader, model, criterion, args, output_folder, list_class_names)
+        acc1 = validate(val_loader, model, criterion, args, output_folder, list_class_names, False)
         scheduler.step()
 
         # remember best acc@1 and save checkpoint
@@ -298,9 +298,10 @@ def train(train_loader, model, criterion, optimizer, epoch, args, output_folder)
                 f.close()
 
 
-def validate(val_loader, model, criterion, args, output_folder, list_class_names):
+def validate(val_loader, model, criterion, args, output_folder, list_class_names, df_flag):
 
     def run_validate(loader, base_progress=0):
+	images_list, preds_list, probs_list, target_list = [], [], [], []
         with torch.no_grad():
             end = time.time()
             for i, (images, target) in enumerate(loader):
@@ -327,6 +328,14 @@ def validate(val_loader, model, criterion, args, output_folder, list_class_names
                 a = [0 for c in names]
 
                 _, preds = torch.max(output.data, 1)
+			
+		# write out dataframe of image|prediction|softmax|target
+		if df_flag:
+		    probs = F.softmax(output, dim=1)
+		    images_list.extend(images)
+      		    preds_list.extend(preds.numpy())
+		    probs_list.extend(probs.numpy())
+		    target_list.extend(target.numpy())
 
                 for c in range(0, len(p)):
                     tp = torch.count_nonzero(((preds == c) * (target == c))).item()
@@ -356,7 +365,14 @@ def validate(val_loader, model, criterion, args, output_folder, list_class_names
                     with open(os.path.join(output_folder, 'log.txt'), 'a') as f:
                         f.write(progress.display(i + 1)+"\n")
                         f.close()
-                
+        
+        if df_flag:
+	    df = pd.DataFrame(data={'image':images_list,
+				'prediction':preds_list,
+				 'softmax':probs_list,
+				'target':target_list}, index=[0])
+	    df.to_csv(os.path.join(output_folder,'image_prediction_softmax_target.csv', index=None)
+	
     batch_time = AverageMeter('Time', ':6.3f', Summary.NONE)
     losses = AverageMeter('Loss', ':.4e', Summary.NONE)
     top1 = AverageMeter('Acc@1', ':6.2f', Summary.AVERAGE)
